@@ -1,4 +1,4 @@
-module github.com/SKAshwin/bbdcbot
+module github.com/2gavy/bbdcbot
 
 require (
 	github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible
