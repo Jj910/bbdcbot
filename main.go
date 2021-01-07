@@ -27,7 +27,7 @@ func main() {
 	// defer f.Close()
 	// mw := io.MultiWriter(os.Stdout, f)
 	// log.SetOutput(mw)
-
+	godotenv.Load()
 	//set up telegram info
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
 	errCheck(err, "Failed to start telegram bot")
@@ -35,7 +35,9 @@ func main() {
 	chatID, err := strconv.ParseInt(os.Getenv("CHAT_ID"), 10, 64)
 	errCheck(err, "Failed to fetch chat ID")
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
 
 	//for heroku
 	go func() {
@@ -69,12 +71,22 @@ func main() {
 			strings.NewReader(bookingForm().Encode()))
 		//req.AddCookie(aspxanon)
 		req.AddCookie(sessionID)
-		req.AddCookie(&http.Cookie{Name: "language", Value: "en-US"})
+		// req.AddCookie(&http.Cookie{Name: "language", Value: "en-US"})
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		// req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36")
+		// req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9")
+		// req.Header.Set("Origin", "http://www.bbdc.sg")
+		// req.Header.Set("Connection", "keep-alive")
+		// req.Header.Set("Referer", "http://www.bbdc.sg/bbdc/b-3c-pLessonBooking.asp?limit=pl")
+		// req.Header.Set("Accept-Encoding", "gzip, deflate")
+		// req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
 		errCheck(err, "Error creating get bookings request")
 		resp, err := client.Do(req)
+		time.Sleep(5 * time.Second)
 		errCheck(err, "Error fetching booking slots")
 		body, _ := ioutil.ReadAll(resp.Body)
+		log.Println(resp)
 		ioutil.WriteFile("booking.txt", body, 0644)
 
 		//parse booking page to get booking dates
@@ -84,6 +96,7 @@ func main() {
 		log.Println("Parsing booking page")
 		foundSlot := false
 		substrs := strings.Split(string(body), "doTooltipV(")[1:]
+		// log.Println("Bookings:", body)
 
 		for _, substr := range substrs {
 			bookingData := strings.Split(substr, ",")[0:6]
@@ -134,7 +147,7 @@ func main() {
 						errCheck(err, "Error creating booking slot")
 						log.Println("Finished booking slot")
 
-						alert("Auto-booked slot, "+day+" from "+bookingData[4]+" to "+bookingData[5]+"because the slot as it was within 10 days of the current date. Please visit http://www.bbdc.sg/bbweb/default.aspx to verify!", bot, chatID)
+						alert("Auto-booked slot, "+day+" from "+bookingData[4]+" to "+bookingData[5]+"because the slot as it was within 10 days of the current date. Please visit http://www.bbdc.sg/bbdc/bbdc_web/newheader.asp to verify!", bot, chatID)
 					} else {
 						log.Printf("Did not proceed with autobook as time till event was %f hours away \n", dayProper.Sub(time.Now()).Hours())
 					}
@@ -151,10 +164,10 @@ func main() {
 			log.Println("No slots found")
 		}
 		r := rand.Intn(300) + 120
-		s := fmt.Sprint(time.Duration(r) * time.Second)
-		alert("Retrigger in: "+s, bot, chatID)
-		ping()
-		time.AfterFunc(30*time.Second, ping)
+		// s := fmt.Sprint(time.Duration(r) * time.Second)
+		// alert("Retrigger in: "+s, bot, chatID) # Stop sending me messages everytime you ping the site omg
+		// ping() # Only when in Heroku environment
+		// time.AfterFunc(30*time.Second, ping)
 		time.Sleep(time.Duration(r) * time.Second)
 	}
 }
@@ -180,10 +193,8 @@ func loadEnvironmentalVariables() {
 	}
 }
 
-func fetchCookies() (*http.Cookie) {
+func fetchCookies() *http.Cookie {
 	resp, err := http.Get("http://www.bbdc.sg/bbdc/bbdc_web/newheader.asp")
-	log.Println("Response:", resp)
-	log.Println("Error:", err)
 	errCheck(err, "Error fetching cookies (sessionID)")
 	sessionID := resp.Cookies()[0]
 	return sessionID
@@ -213,11 +224,13 @@ func bookingForm() url.Values {
 	for _, day := range days {
 		bookingForm.Add("Day", day)
 	}
+	bookingForm.Add("allSes", "on")
+	bookingForm.Add("allDay", "")
 	bookingForm.Add("defPLVenue", "1")
 	bookingForm.Add("optVenue", "1")
 
 	log.Printf("Looking through booking form for %s, for %s sessions, for these days %s (where 7 = Saturday etc.)", strings.Join(months, " "), strings.Join(sessions, " "), strings.Join(days, " "))
-
+	log.Println("bookingForm", bookingForm)
 	return bookingForm
 }
 
